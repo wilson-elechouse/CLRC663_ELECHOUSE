@@ -49,6 +49,7 @@ void loop() {
   uint8_t uid[10] = {0};
   bool cardFound = false;
 
+  Serial.println("Scan (UART)...");
   reader.softReset();
   reader.AN1102_recommended_registers(MFRC630_PROTO_ISO14443A_106_MILLER_MANCHESTER);
   uint8_t uid_len = reader.read_iso14443_uid(uid);
@@ -78,5 +79,6 @@ void loop() {
     return;
   }
 
+  Serial.println("No tag, retrying...");
   delay(300);
 }
