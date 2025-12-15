@@ -53,7 +53,7 @@
 // SPI instance
 //CLRC663 reader(&SPI, CHIP_SELECT, IRQ_PIN);D
 // I2C instance (address 0x28-0x2B), IF1=esp32 D22, IF3=esp32 D21
-CLRC663 reader(0x2B, IRQ_PIN);
+CLRC663 reader(0x2B, -1, IRQ_PIN);  // args: address, reset pin (none), irq pin
 
 
 
@@ -155,6 +155,5 @@ void loop(){
   Serial.println(q_result);
   delay(1000);
 }
-
 
 
