@@ -1,6 +1,8 @@
 # CLRC663 - RFID-reader library
 
-An Arduino/PlatformIO library for the CLRC633 RFID-reader module
+An Arduino/PlatformIO library for the CLRC633 RFID-reader module.
+
+Tested with Arduino IDE 2.x and PlatformIO.
 
 Copyright (c) 2023 tueddy (Dirk Carstensen) 
 
@@ -55,17 +57,22 @@ https://blog.edhayes.us/2022/02/23/clrc663-module-spi-i2c/
 
 
 
+## Examples
+
+- `examples/CLRC663-SPI/CLRC663-SPI.ino` shows SPI wiring and basic tag reading.
+- `examples/CLRC663_I2C/CLRC663_I2C.ino` shows I2C wiring and tag reading.
+- `examples/UART-testing/UART-testing.ino` is a minimal serial communication smoke test.
+
 ## Installation
 
-For Arduino you can download the library as zip and call include Library -> zip library. Or you can git clone this project into the Arduino libraries folder e.g. with
+For Arduino IDE 2.x download the library as zip and use **Sketch → Include Library → Add .ZIP Library…**. Or clone this project into your Arduino `libraries` folder, e.g.:
 ```
-cd  ~/Documents/Arduino/libraries
-git clone tueddy/CLRC663-Library.git
+cd ~/Documents/Arduino/libraries
+git clone https://github.com/wilson-elechouse/CLRC663_ELECHOUSE.git
 ```
 
-For PlatformIO include the library in platform.ini:
+For PlatformIO include the library in `platformio.ini`:
 ```
 lib_deps =
-	https://github.com/tueddy/CLRC663-Library.git
+  https://github.com/wilson-elechouse/CLRC663_ELECHOUSE.git
 ```
-
