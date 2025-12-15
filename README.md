@@ -69,7 +69,6 @@ https://blog.edhayes.us/2022/02/23/clrc663-module-spi-i2c/
 - `examples/CLRC663-SPI/CLRC663-SPI.ino` shows SPI wiring and basic tag reading.
 - `examples/CLRC663_I2C/CLRC663_I2C.ino` shows I2C wiring and tag reading.
 - `examples/CLRC663_UART/CLRC663_UART.ino` shows UART wiring and tag reading (set module to UART mode).
-- `examples/UART-diagnostics/UART-diagnostics.ino` one-shot UART comms probe (SerialSpeed, reg write/read, REQA probe).
 - `examples/UART-testing/UART-testing.ino` is a minimal serial communication smoke test.
 
 ## Installation
