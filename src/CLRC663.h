@@ -3,6 +3,7 @@
 #include "Arduino.h"
 #include <SPI.h>
 #include <Wire.h>
+#include <HardwareSerial.h>
 #include "mfrc630_def.h"
 
 // debug print statement.
@@ -14,7 +15,8 @@
 
 enum clrc633_transport {
   MFRC630_TRANSPORT_SPI = 1,
-  MFRC630_TRANSPORT_I2C = 2
+  MFRC630_TRANSPORT_I2C = 2,
+  MFRC630_TRANSPORT_UART = 3
 };
 
 
@@ -29,6 +31,11 @@ class CLRC663 {
         // I2C specific
         uint8_t _i2c_addr;
         TwoWire *_wire;
+        // UART specific
+        HardwareSerial *_serial;
+        int8_t _serialRx;
+        int8_t _serialTx;
+        uint32_t _serialBaud;
         void write_regs(uint8_t reg, const uint8_t* values, uint8_t len);
         // utility functions
         void write_fifo(const uint8_t* data, uint16_t len);
@@ -64,6 +71,8 @@ class CLRC663 {
         CLRC663(SPIClass *spi, int8_t cs, int8_t rst = -1, int8_t irq = -1);
         // I2C constructor
         CLRC663(uint8_t i2c_address = 0x2A, int8_t rst = -1, int8_t irq = -1);
+        // UART constructor
+        CLRC663(HardwareSerial *serial, int8_t rx, int8_t tx, uint32_t baud = 115200, int8_t rst = -1, int8_t irq = -1);
 
         // public functions
         void begin();
@@ -91,7 +100,6 @@ class CLRC663 {
         void AN11145_start_IQ_measurement(uint8_t* i_val, uint8_t* q_val);
         void lpcd_start(uint8_t i_value, uint8_t q_value) ;
 };
-
 
 
 

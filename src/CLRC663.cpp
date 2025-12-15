@@ -25,6 +25,10 @@ CLRC663::CLRC663(SPIClass *SPI, int8_t cs, int8_t rst, int8_t irq) {
   _transport = MFRC630_TRANSPORT_SPI;
   // set SPI
   _spi = SPI;
+  _serial = NULL;
+  _serialRx = -1;
+  _serialTx = -1;
+  _serialBaud = 0;
   // Set the CS/SSEL pin 
   _cs = cs;
   pinMode(_cs, OUTPUT);
@@ -55,6 +59,10 @@ CLRC663::CLRC663(uint8_t i2c_addr, int8_t rst, int8_t irq) {
   _transport = MFRC630_TRANSPORT_I2C;
   // Set the I2C address 
   _i2c_addr = i2c_addr;
+  _serial = NULL;
+  _serialRx = -1;
+  _serialTx = -1;
+  _serialBaud = 0;
   // Set the I2C bus instance 
   _wire = &Wire;
   // set RESET pin (optional)
@@ -75,35 +83,74 @@ CLRC663::CLRC663(uint8_t i2c_addr, int8_t rst, int8_t irq) {
   _cs = -1;
 }
 
+// UART constructor
+CLRC663::CLRC663(HardwareSerial *serial, int8_t rx, int8_t tx, uint32_t baud, int8_t rst, int8_t irq) {
+  _transport = MFRC630_TRANSPORT_UART;
+  _serial = serial;
+  _serialRx = rx;
+  _serialTx = tx;
+  _serialBaud = baud;
+  _wire = NULL;
+  _i2c_addr = 0;
+  _spi = NULL;
+  _cs = -1;
+
+  if ((rst >= 0) && (rst <= MAX_GPIO)) {
+    _rst = rst;
+  } else {
+    _rst = -1;
+  }
+
+  if ((irq >= 0) && (irq <= MAX_GPIO)) {
+    _irq = irq;
+    pinMode(_irq, INPUT);
+  } else {
+    _irq = -1;
+  }
+}
+
 // begin communication
 void CLRC663::begin() {
-    if (_transport == MFRC630_TRANSPORT_SPI) {
-        // SPI
-        _spi->begin();
-    } else {
-        // I2C
-        byte pinSDA = SDA;
-        byte pinSCL = SCL;
-        _wire->begin(pinSDA, pinSCL);
+  if (_transport == MFRC630_TRANSPORT_SPI) {
+    _spi->begin();
+  } else if (_transport == MFRC630_TRANSPORT_I2C) {
+    byte pinSDA = SDA;
+    byte pinSCL = SCL;
+    _wire->begin(pinSDA, pinSCL);
+  } else if (_transport == MFRC630_TRANSPORT_UART) {
+    if (_serial) {
+#if defined(ARDUINO_ARCH_ESP32)
+      _serial->begin(_serialBaud, SERIAL_8N1, _serialRx, _serialTx);
+#else
+      _serial->begin(_serialBaud);
+#endif
+      while (_serial->available()) { _serial->read(); }
     }
+  }
   reset();
 }
 
 void CLRC663::begin(int sda, int scl) {
-    // I2C
-    _wire->setPins(sda, scl);
-    _wire->begin();
+  if (_transport != MFRC630_TRANSPORT_I2C) {
+    return;
+  }
+#if defined(ARDUINO_ARCH_ESP32)
+  _wire->setPins(sda, scl);
+#endif
+  _wire->begin();
   reset();
 }
 
 void CLRC663::end() {
-    if (_transport == MFRC630_TRANSPORT_SPI) {
-        // SPI
-        _spi->end();
-    } else {
-        // I2C
-        _wire->end();
+  if (_transport == MFRC630_TRANSPORT_SPI) {
+    _spi->end();
+  } else if (_transport == MFRC630_TRANSPORT_I2C) {
+    _wire->end();
+  } else if (_transport == MFRC630_TRANSPORT_UART) {
+    if (_serial) {
+      _serial->end();
     }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -121,13 +168,27 @@ uint8_t CLRC663::read_reg(uint8_t reg) {
     digitalWrite(_cs, HIGH);
     _spi->endTransaction();    // release the SPI bus
     return instruction_rx[1];  // the second byte the returned value.
-  } else {
+  } else if (_transport == MFRC630_TRANSPORT_I2C) {
     // I2C transport
     _wire->beginTransmission(_i2c_addr);
     _wire->write(reg);
     _wire->endTransmission();
     _wire->requestFrom(_i2c_addr, (uint8_t)1);
     return _wire->read();
+  } else {
+    // UART transport
+    if (!_serial) return 0;
+    while (_serial->available()) { _serial->read(); } // clear stale data
+    uint8_t addressByte = uint8_t((reg << 1) | 0x01);
+    _serial->write(addressByte);
+    unsigned long start = millis();
+    while (!_serial->available() && (millis() - start < 50)) {
+      delayMicroseconds(200);
+    }
+    if (!_serial->available()) {
+      return 0;
+    }
+    return _serial->read();
   }
 }
 
@@ -143,12 +204,18 @@ void CLRC663::write_reg(uint8_t reg, uint8_t value) {
     discard[1] = _spi->transfer(instruction_tx[1]);
     digitalWrite(_cs, HIGH);
     _spi->endTransaction();    // release the SPI bus
-  } else {
+  } else if (_transport == MFRC630_TRANSPORT_I2C) {
     // I2C transport
     _wire->beginTransmission(_i2c_addr);
     _wire->write(reg);
     _wire->write(value);
     _wire->endTransmission();
+  } else {
+    // UART transport
+    if (!_serial) return;
+    uint8_t addressByte = uint8_t((reg << 1) & 0xFE);
+    _serial->write(addressByte);
+    _serial->write(value);
   }
 }
 
@@ -172,7 +239,7 @@ void CLRC663::write_regs(uint8_t reg, const uint8_t* values, uint8_t len) {
     }
     digitalWrite(_cs, HIGH);
     _spi->endTransaction();    // release the SPI bus
-  } else {
+  } else if (_transport == MFRC630_TRANSPORT_I2C) {
     // I2C transport
     _wire->beginTransmission(_i2c_addr);
     _wire->write(reg);
@@ -180,6 +247,14 @@ void CLRC663::write_regs(uint8_t reg, const uint8_t* values, uint8_t len) {
       _wire->write(values[i]);
     }
     _wire->endTransmission();
+  } else {
+    // UART transport
+    if (!_serial) return;
+    uint8_t addressByte = uint8_t((reg << 1) & 0xFE);
+    _serial->write(addressByte);
+    for (i = 0; i < len; i++) {
+      _serial->write(values[i]);
+    }
   }
 }
 
@@ -1274,8 +1349,6 @@ void CLRC663::AN1102_recommended_registers(uint8_t protocol) {
 void CLRC663::AN1102_recommended_registers_no_transmitter(uint8_t protocol) {
   AN1102_recommended_registers_skip(protocol, 5);
 }
-
-
 
 
 

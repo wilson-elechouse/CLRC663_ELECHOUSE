@@ -9,7 +9,8 @@ Copyright (c) 2023 tueddy (Dirk Carstensen)
 
 
 ## Features:
-   - can be connected via SPI or I2C (2 GPIOs less)
+   - can be connected via SPI, I2C, or UART (2 GPIOs less for I2C/UART)
+   - UART host interface support (for modules strapped for UART)
    - read ISO-14443 UID's
    - read ISO-18693 UID's
    - support for ICode-SLIX password protected tags (privacy mode) / custom tags
@@ -47,6 +48,12 @@ Create a I2C instance with
 CLRC663 reader(0x2A, IRQ_PIN);
 ````
 
+For UART put the module into UART mode (IFSEL pins / resistors) and connect TX/RX:
+```` c++
+HardwareSerial RC663Serial(2);
+CLRC663 reader(&RC663Serial, RX_PIN, TX_PIN, 115200, RESET_PIN, IRQ_PIN);
+````
+
 
 Module is delivered in SPI mode by default. If you need to change your CLRC663 module to work with I2C, you can easily do so by using a hot air gun/rework station and changing two resistors R2 -> R1, and R4 -> R8:
 ![I2C](https://user-images.githubusercontent.com/11274319/222263210-958d5883-7d8d-4567-b8d4-93587f05dde8.jpg)
@@ -61,6 +68,7 @@ https://blog.edhayes.us/2022/02/23/clrc663-module-spi-i2c/
 
 - `examples/CLRC663-SPI/CLRC663-SPI.ino` shows SPI wiring and basic tag reading.
 - `examples/CLRC663_I2C/CLRC663_I2C.ino` shows I2C wiring and tag reading.
+- `examples/CLRC663_UART/CLRC663_UART.ino` shows UART wiring and tag reading (set module to UART mode).
 - `examples/UART-testing/UART-testing.ino` is a minimal serial communication smoke test.
 
 ## Installation
