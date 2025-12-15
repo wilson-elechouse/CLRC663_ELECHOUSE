@@ -51,9 +51,9 @@
 // By default that means MOSI=23, MISO=19, SCK=18. (N)SS: 5
 
 // SPI instance
-CLRC663 reader(&SPI, CHIP_SELECT, IRQ_PIN);
-// I2C instance (address 0x28-0x2B)
-//CLRC663 reader(0x2A, IRQ_PIN);
+//CLRC663 reader(&SPI, CHIP_SELECT, IRQ_PIN);D
+// I2C instance (address 0x28-0x2B), IF1=esp32 D22, IF3=esp32 D21
+CLRC663 reader(0x2B, IRQ_PIN);
 
 
 

@@ -1,0 +1,17 @@
+/*.zip
+/*.tar
+*.o
+*.d
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+*.swp
+*.swo
+.DS_Store
+.vscode/
+.idea/
+build/
+.pio/
+.vs/
