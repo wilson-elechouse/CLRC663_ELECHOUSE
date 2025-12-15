@@ -372,6 +372,17 @@ void CLRC663::reset(void){
 void CLRC663::softReset(void){
   write_reg(MFRC630_REG_COMMAND, MFRC630_CMD_SOFTRESET);
   delay(50);
+  // Re-assert UART baud after reset so host/device stay in sync.
+  if (_transport == MFRC630_TRANSPORT_UART && _serialBaud > 0) {
+    // Baud formula from datasheet: Fpclk / (2 * (SerSpeed + 1))
+    uint32_t setting = (27120000UL / (2 * _serialBaud));
+    if (setting > 0) {
+      setting -= 1;
+    }
+    if (setting > 255) setting = 255;
+    write_reg(MFRC630_REG_SERIALSPEED, (uint8_t)setting);
+    delay(2);
+  }
 }
 
 /*
@@ -1349,6 +1360,5 @@ void CLRC663::AN1102_recommended_registers(uint8_t protocol) {
 void CLRC663::AN1102_recommended_registers_no_transmitter(uint8_t protocol) {
   AN1102_recommended_registers_skip(protocol, 5);
 }
-
 
 

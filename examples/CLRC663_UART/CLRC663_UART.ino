@@ -50,7 +50,7 @@ void loop() {
   bool cardFound = false;
 
   Serial.println("Scan (UART)...");
-  reader.softReset();
+  reader.softReset();  // also re-asserts UART baud internally now
   reader.AN1102_recommended_registers(MFRC630_PROTO_ISO14443A_106_MILLER_MANCHESTER);
   uint8_t uid_len = reader.read_iso14443_uid(uid);
 
