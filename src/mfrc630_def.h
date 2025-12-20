@@ -412,6 +412,34 @@
 
     //! @}
 
+/*!
+  \defgroup txamp_reg Tx Amplifier
+        \brief Defines to manipulate `#MFRC630_REG_TXAMP`.
+        @{
+*/
+//! Mask for the CW amplitude bits (7:6)
+#define MFRC630_TXAMP_CW_AMPLITUDE_MASK     (0x03<<6)
+//! set_cw_amplitude value: TVDD - 100 mV
+#define MFRC630_TXAMP_CW_AMPLITUDE_M100MV   (0x00<<6)
+//! set_cw_amplitude value: TVDD - 250 mV
+#define MFRC630_TXAMP_CW_AMPLITUDE_M250MV   (0x01<<6)
+//! set_cw_amplitude value: TVDD - 500 mV
+#define MFRC630_TXAMP_CW_AMPLITUDE_M500MV   (0x02<<6)
+//! set_cw_amplitude value: TVDD - 1000 mV
+#define MFRC630_TXAMP_CW_AMPLITUDE_M1000MV  (0x03<<6)
+
+    //! @}
+
+/*!
+  \defgroup drvcon_reg Driver Configuration
+        \brief Defines to manipulate `#MFRC630_REG_DRVCON`.
+        @{
+*/
+//! Forces the continuous wave amplitude to the maximum possible value.
+#define MFRC630_DRVCON_CWMAX                (1<<3)
+
+    //! @}
+
 // close the registers group
 //! @}
 

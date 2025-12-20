@@ -21,7 +21,18 @@
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 */
-
+/* Hardware connection
+  ELECHOUSE CLRC663 MODULE  --------  ESP32 DEV MODULE
+  5V                        --------  5V
+  PDOWN                     --------  GND
+  MOSI/RX                   --------  D23
+  SCK/SCL                   --------  D18
+  MISO/TX                   --------  D19
+  NSS/SDA                   --------  D5
+  IRQ                       --------  D16
+  3V3                       --------  3V3
+  GND                       --------  GND
+*/
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -83,6 +94,39 @@ void setup(){
   // get version
   Serial.print("CLRC663 version: ");
   Serial.println(reader.getVersion());
+
+  // --- Tx Power Configuration ---
+  // Set the transmission power once in setup
+  // Be aware that reader.AN1102_recommended_registers() inside the loop MIGHT override this 
+  // depending on how it's implemented. 
+  // IMPORTANT: The loop code calls AN1102_recommended_registers() which resets these registers.
+  // To make it permanent across protocols, you might need to re-apply it after protocol changes.
+  // BUT the user requested to put it here.
+  
+  reader.set_TxAmp(0);      // TVDD - 1000mV
+  reader.set_CwMax(false);  // Enable TxAmp settings
+  
+  // Verify configuration
+  uint8_t txAmpReg = reader.read_reg(MFRC630_REG_TXAMP);
+  uint8_t drvConReg = reader.read_reg(MFRC630_REG_DRVCON);
+  
+  Serial.println("--- Tx Power Configuration Check ---");
+  Serial.print("TxAmp (0x29): 0x"); Serial.println(txAmpReg, HEX);
+  Serial.print("DrvCon (0x2A): 0x"); Serial.println(drvConReg, HEX);
+  
+  uint8_t ampLevel = (txAmpReg >> 6) & 0x03;
+  Serial.print("Current Amplitude Level: "); Serial.println(ampLevel);
+  if (ampLevel == 0) Serial.println("Mode: TVDD - 100mV (Strongest)");
+  else if (ampLevel == 1) Serial.println("Mode: TVDD - 250mV");
+  else if (ampLevel == 2) Serial.println("Mode: TVDD - 500mV");
+  else if (ampLevel == 3) Serial.println("Mode: TVDD - 1000mV (Weakest)");
+
+  if (drvConReg & MFRC630_DRVCON_CWMAX) {
+      Serial.println("Status: CwMax is ON (Forced Max Power)");
+  } else {
+      Serial.println("Status: CwMax is OFF (Using Amplitude Level)");
+  }
+  Serial.println("------------------------------------");
 }
 
 
@@ -93,6 +137,11 @@ void loop(){
   reader.softReset();          
   // Set the registers of the CLRC633 into the default for ISO-14443
   reader.AN1102_recommended_registers(MFRC630_PROTO_ISO14443A_106_MILLER_MANCHESTER);
+  
+  // Apply custom power settings AFTER loading recommended registers
+  // reader.set_TxAmp(3);
+  // reader.set_CwMax(false);
+
   uint8_t uid_len = reader.read_iso14443_uid(uid);
 
   if (uid_len != 0) {  // did we get an UID?
@@ -107,6 +156,10 @@ void loop(){
 
   reader.softReset();  
   reader.AN1102_recommended_registers(MFRC630_PROTO_ISO15693_1_OF_4_SSC); 
+
+  // Apply custom power settings again if needed
+  // reader.set_TxAmp(3);
+  // reader.set_CwMax(false);
 
   uint8_t password[] = {0x0F, 0x0F, 0x0F, 0x0F};
   uid_len = reader.read_iso18693_uid(uid, password);

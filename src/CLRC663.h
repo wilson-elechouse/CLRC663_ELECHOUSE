@@ -99,6 +99,12 @@ class CLRC663 {
         // LPCD 
         void AN11145_start_IQ_measurement(uint8_t* i_val, uint8_t* q_val);
         void lpcd_start(uint8_t i_value, uint8_t q_value) ;
+
+        // Transmission Power Control
+        // amplitude: 0 = TVDD - 100 mV, 1 = TVDD - 250 mV, 2 = TVDD - 500 mV, 3 = TVDD - 1000 mV
+        void set_TxAmp(uint8_t amplitude);
+        // enable: true = Force 100% ASK and Ignore TxAmp settings, false = Use TxAmp settings
+        void set_CwMax(bool enable);
 };
 
 

@@ -1361,4 +1361,32 @@ void CLRC663::AN1102_recommended_registers_no_transmitter(uint8_t protocol) {
   AN1102_recommended_registers_skip(protocol, 5);
 }
 
+// ---------------------------------------------------------------------------
+// Transmission Power Control
+// ---------------------------------------------------------------------------
+void CLRC663::set_TxAmp(uint8_t amplitude) {
+    // Limit to valid 2-bit value (0-3)
+    if (amplitude > 3) amplitude = 3;
+    
+    uint8_t current = read_reg(MFRC630_REG_TXAMP);
+    // Clear bits 7:6
+    current &= ~MFRC630_TXAMP_CW_AMPLITUDE_MASK;
+    // Set new value (shifted by 6 as per register definition)
+    current |= (amplitude << 6);
+    
+    write_reg(MFRC630_REG_TXAMP, current);
+}
+
+void CLRC663::set_CwMax(bool enable) {
+    uint8_t current = read_reg(MFRC630_REG_DRVCON);
+    
+    if (enable) {
+        current |= MFRC630_DRVCON_CWMAX;
+    } else {
+        current &= ~MFRC630_DRVCON_CWMAX;
+    }
+    
+    write_reg(MFRC630_REG_DRVCON, current);
+}
+
 
