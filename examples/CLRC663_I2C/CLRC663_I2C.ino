@@ -22,6 +22,19 @@
   SOFTWARE.
 */
 
+/* Hardware connection I2C
+  ELECHOUSE CLRC663 MODULE  --------  ESP32 DEV MODULE
+  5V                        --------  5V
+  PDOWN                     --------  GND
+  MOSI/RX                   --------  NC (NC/GND IF0=1/0,I2C address setting)
+  SCK/SCL                   --------  D22
+  MISO/TX                   --------  NC (NC/GND IF1=1/0,I2C address setting)
+  NSS/SDA                   --------  D21
+  IRQ                       --------  D16
+  3V3                       --------  3V3
+  GND                       --------  GND
+*/
+
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -39,8 +52,6 @@
 */
 
 
-// Pin to select the hardware, the CS pin.
-#define CHIP_SELECT 5
 
 // IRQ pin for wake-up from LPCD
 #define IRQ_PIN 16

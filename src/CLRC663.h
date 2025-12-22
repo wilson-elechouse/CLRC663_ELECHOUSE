@@ -96,6 +96,9 @@ class CLRC663 {
         void AN1102_recommended_registers_no_transmitter(uint8_t protocol);
         uint8_t read_iso14443_uid(uint8_t *uid);
         uint8_t read_iso18693_uid(uint8_t *uid, uint8_t *password = NULL);
+        // Debug helpers for ISO-14443A low-level steps.
+        uint16_t iso14443a_reqa_debug();
+        uint8_t iso14443a_select_debug(uint8_t* uid, uint8_t* sak);
         // LPCD 
         void AN11145_start_IQ_measurement(uint8_t* i_val, uint8_t* q_val);
         void lpcd_start(uint8_t i_value, uint8_t q_value) ;
@@ -106,7 +109,6 @@ class CLRC663 {
         // enable: true = Force 100% ASK and Ignore TxAmp settings, false = Use TxAmp settings
         void set_CwMax(bool enable);
 };
-
 
 
 

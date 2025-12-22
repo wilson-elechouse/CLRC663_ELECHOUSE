@@ -19,6 +19,38 @@
 
 #define MAX_GPIO 39
 
+static uint8_t uart_serialspeed_from_baud(uint32_t baud) {
+  struct BaudEntry {
+    uint32_t baud;
+    uint8_t reg;
+  };
+  // Datasheet UART SerialSpeedReg table.
+  static const BaudEntry table[] = {
+    {7200, 0xFA},
+    {9600, 0xEB},
+    {14400, 0xDA},
+    {19200, 0xCB},
+    {38400, 0xAB},
+    {57600, 0x9A},
+    {115200, 0x7A},
+    {128000, 0x74},
+    {230400, 0x5A},
+    {460800, 0x3A},
+    {921600, 0x1C},
+    {1228800, 0x15},
+  };
+  uint8_t best_reg = table[0].reg;
+  uint32_t best_err = (baud > table[0].baud) ? (baud - table[0].baud) : (table[0].baud - baud);
+  for (size_t i = 1; i < (sizeof(table) / sizeof(table[0])); i++) {
+    uint32_t err = (baud > table[i].baud) ? (baud - table[i].baud) : (table[i].baud - baud);
+    if (err < best_err) {
+      best_err = err;
+      best_reg = table[i].reg;
+    }
+  }
+  return best_reg;
+}
+
 // SPI constructor
 CLRC663::CLRC663(SPIClass *SPI, int8_t cs, int8_t rst, int8_t irq) {
   // set the transport
@@ -179,7 +211,8 @@ uint8_t CLRC663::read_reg(uint8_t reg) {
     // UART transport
     if (!_serial) return 0;
     while (_serial->available()) { _serial->read(); } // clear stale data
-    uint8_t addressByte = uint8_t((reg << 1) | 0x01);
+    // UART address byte uses MSB as R/W, bits 6..0 as address (LSB first on wire).
+    uint8_t addressByte = uint8_t(reg | 0x80);
     _serial->write(addressByte);
     unsigned long start = millis();
     while (!_serial->available() && (millis() - start < 50)) {
@@ -188,7 +221,18 @@ uint8_t CLRC663::read_reg(uint8_t reg) {
     if (!_serial->available()) {
       return 0;
     }
-    return _serial->read();
+    uint8_t value = _serial->read();
+    // Some UART setups echo the address byte; if so, wait for the real data.
+    if (value == addressByte) {
+      start = millis();
+      while (!_serial->available() && (millis() - start < 20)) {
+        delayMicroseconds(200);
+      }
+      if (_serial->available()) {
+        value = _serial->read();
+      }
+    }
+    return value;
   }
 }
 
@@ -213,9 +257,19 @@ void CLRC663::write_reg(uint8_t reg, uint8_t value) {
   } else {
     // UART transport
     if (!_serial) return;
-    uint8_t addressByte = uint8_t((reg << 1) & 0xFE);
+    // UART address byte uses MSB as R/W, bits 6..0 as address (LSB first on wire).
+    uint8_t addressByte = uint8_t(reg & 0x7F);
     _serial->write(addressByte);
     _serial->write(value);
+    // UART writes echo the address byte; drain it to avoid read skew.
+    unsigned long start = millis();
+    while ((millis() - start) < 10) {
+      if (_serial->available()) {
+        while (_serial->available()) { _serial->read(); }
+        break;
+      }
+      delayMicroseconds(200);
+    }
   }
 }
 
@@ -250,10 +304,21 @@ void CLRC663::write_regs(uint8_t reg, const uint8_t* values, uint8_t len) {
   } else {
     // UART transport
     if (!_serial) return;
-    uint8_t addressByte = uint8_t((reg << 1) & 0xFE);
-    _serial->write(addressByte);
     for (i = 0; i < len; i++) {
+      uint8_t addr = (reg == MFRC630_REG_FIFODATA) ? reg : uint8_t(reg + i);
+      // UART address byte uses MSB as R/W, bits 6..0 as address (LSB first on wire).
+      uint8_t addressByte = uint8_t(addr & 0x7F);
+      _serial->write(addressByte);
       _serial->write(values[i]);
+      // UART writes echo the address byte; drain it to avoid read skew.
+      unsigned long start = millis();
+      while ((millis() - start) < 10) {
+        if (_serial->available()) {
+          while (_serial->available()) { _serial->read(); }
+          break;
+        }
+        delayMicroseconds(200);
+      }
     }
   }
 }
@@ -374,13 +439,8 @@ void CLRC663::softReset(void){
   delay(50);
   // Re-assert UART baud after reset so host/device stay in sync.
   if (_transport == MFRC630_TRANSPORT_UART && _serialBaud > 0) {
-    // Baud formula from datasheet: Fpclk / (2 * (SerSpeed + 1))
-    uint32_t setting = (27120000UL / (2 * _serialBaud));
-    if (setting > 0) {
-      setting -= 1;
-    }
-    if (setting > 255) setting = 255;
-    write_reg(MFRC630_REG_SERIALSPEED, (uint8_t)setting);
+    uint8_t setting = uart_serialspeed_from_baud(_serialBaud);
+    write_reg(MFRC630_REG_SERIALSPEED, setting);
     delay(2);
   }
 }
@@ -728,6 +788,14 @@ uint16_t CLRC663::iso14443a_WUPA() {
   return iso14443a_WUPA_REQA(MFRC630_ISO14443_CMD_WUPA);
 }
 
+uint16_t CLRC663::iso14443a_reqa_debug() {
+  return iso14443a_REQA();
+}
+
+uint8_t CLRC663::iso14443a_select_debug(uint8_t* uid, uint8_t* sak) {
+  return iso14443a_select(uid, sak);
+}
+
 uint16_t CLRC663::iso14443a_WUPA_REQA(uint8_t instruction) {
   cmd_idle();
   // AN1102_recommended_registers_no_transmitter(MFRC630_PROTO_ISO14443A_106_MILLER_MANCHESTER);
@@ -762,8 +830,12 @@ uint16_t CLRC663::iso14443a_WUPA_REQA(uint8_t instruction) {
   // Frame waiting time: FWT = (256 x 16/fc) x 2 FWI
   // FWI defaults to four... so that would mean wait for a maximum of ~ 5ms
 
-  timer_set_reload(timer_for_timeout, 1000);  // 1000 ticks of 5 usec is 5 ms.
-  timer_set_value(timer_for_timeout, 1000);
+  uint16_t timeout_ticks = 1000;  // 1000 ticks of 5 usec is 5 ms.
+  if (_transport == MFRC630_TRANSPORT_UART) {
+    timeout_ticks = 2000; // UART register access is slower; extend wait.
+  }
+  timer_set_reload(timer_for_timeout, timeout_ticks);
+  timer_set_value(timer_for_timeout, timeout_ticks);
 
   // Go into send, then straight after in receive.
   cmd_transceive(send_req, 1);
@@ -779,14 +851,26 @@ uint16_t CLRC663::iso14443a_WUPA_REQA(uint8_t instruction) {
   MFRC630_PRINTF("After waiting for answer\n");
   cmd_idle();
 
-  // if no Rx IRQ, or if there's an error somehow, return 0
   uint8_t irq0 = get_irq0();
-  if ((!(irq0 & MFRC630_IRQ0_RX_IRQ)) || (irq0 & MFRC630_IRQ0_ERR_IRQ)) {
-    MFRC630_PRINTF("No RX, irq1: %hhx irq0: %hhx\n", irq1_value, irq0);
-    return 0;
+  uint8_t err = 0;
+  if (irq0 & MFRC630_IRQ0_ERR_IRQ) {
+    err = read_reg(MFRC630_REG_ERROR);
   }
 
   uint8_t rx_len = fifo_length();
+  // Some setups signal a collision even when valid ATQA is available.
+  if (rx_len == 2) {
+    uint16_t res;
+    read_fifo((uint8_t*) &res, rx_len);
+    return res;
+  }
+
+  // if no Rx IRQ, or if there's an error somehow, return 0
+  if ((!(irq0 & MFRC630_IRQ0_RX_IRQ)) || (irq0 & MFRC630_IRQ0_ERR_IRQ)) {
+    MFRC630_PRINTF("No RX, irq1: %hhx irq0: %hhx err: %hhx\n", irq1_value, irq0, err);
+    return 0;
+  }
+
   uint16_t res;
   MFRC630_PRINTF("rx_len: %hhd\n", rx_len);
   if (rx_len == 2) {  // ATQA should answer with 2 bytes.
@@ -828,8 +912,12 @@ uint8_t CLRC663::iso14443a_select(uint8_t* uid, uint8_t* sak) {
   // Frame waiting time: FWT = (256 x 16/fc) x 2 FWI
   // FWI defaults to four... so that would mean wait for a maximum of ~ 5ms
 
-  timer_set_reload(timer_for_timeout, 1000);  // 1000 ticks of 5 usec is 5 ms.
-  timer_set_value(timer_for_timeout, 1000);
+  uint16_t timeout_ticks = 1000;  // 1000 ticks of 5 usec is 5 ms.
+  if (_transport == MFRC630_TRANSPORT_UART) {
+    timeout_ticks = 2000; // UART register access is slower; extend wait.
+  }
+  timer_set_reload(timer_for_timeout, timeout_ticks);
+  timer_set_value(timer_for_timeout, timeout_ticks);
   uint8_t cascade_level;
   for (cascade_level=1; cascade_level <= 3; cascade_level++) {
     uint8_t cmd = 0;
@@ -1062,6 +1150,16 @@ uint8_t CLRC663::iso14443a_select(uint8_t* uid, uint8_t* sak) {
     // Read the sak answer from the fifo.
     uint8_t sak_len = fifo_length();
     if (sak_len != 1) {
+      uint8_t err = read_reg(MFRC630_REG_ERROR);
+      MFRC630_PRINTF("SAK len %hhd, irq0: %hhX err: %hhX\n", sak_len, irq0_value, err);
+      if (sak_len > 0) {
+        uint8_t tmp[8];
+        uint8_t dump_len = sak_len < sizeof(tmp) ? sak_len : sizeof(tmp);
+        read_fifo(tmp, dump_len);
+        MFRC630_PRINTF("SAK fifo: ");
+        print_block(tmp, dump_len);
+        MFRC630_PRINTF("\n");
+      }
       return 0;
     }
     uint8_t sak_value;
@@ -1265,7 +1363,7 @@ uint16_t CLRC663::ISO15693_readTag(uint8_t* uid){
 	  //Wait for timer1 underflow (irq1(0x02) or RxIrQ irq0(0x04;
 	  irq0_value =0;
 	  timeout= millis();
-	  while ( ((irq1_value & 0x02) !=0x02)  && ((irq0_value & 0x04) !=0x04)){
+	while ( ((irq1_value & 0x02) !=0x02)  && ((irq0_value & 0x04) !=0x04)){
 		irq1_value = get_irq1();
 		irq0_value = get_irq0();
 	    if(millis() > (timeout+50)){
@@ -1273,10 +1371,16 @@ uint16_t CLRC663::ISO15693_readTag(uint8_t* uid){
 		 }
 	  }
 
-	// Check for error
-	if((irq1_value & 0x02)){
+	// Check for timeout or RX/error conditions.
+	irq0_value = get_irq0();
+	uint8_t error = read_reg(MFRC630_REG_ERROR);
+	if ((irq1_value & MFRC630_IRQ1_TIMER1_IRQ) ||
+	    !(irq0_value & MFRC630_IRQ0_RX_IRQ) ||
+	    (irq0_value & MFRC630_IRQ0_ERR_IRQ) ||
+	    (error != 0)) {
+		flush_fifo();
 		return 0x00;								//return error!
-	};
+	}
 
 	// disable IRQ0,IRQ1
 	write_reg(MFRC630_REG_IRQ0EN, MFRC630_IRQ0EN_CLEAR);
@@ -1284,25 +1388,25 @@ uint16_t CLRC663::ISO15693_readTag(uint8_t* uid){
 
 	//see if a uid was found:
 	uint16_t fifo_len = fifo_length();
-//  Serial.println(fifo_len);
-	if(fifo_len < MFRC630_ISO15693_UID_LENGTH){
+	const uint8_t expected_len = MFRC630_ISO15693_UID_LENGTH + 2;
+	if ((fifo_len != expected_len) && (fifo_len != (expected_len + 2))) {
+		flush_fifo();
 		return 0x00;								//return error - invalid uid size!
 	}
 
-	//transfer UID to variable
-  uint8_t len = fifo_len - 2;
-	if(len > 10){
-		return 0x00;								//return error - invalid uid size!
+	uint8_t dummy[12];
+	read_fifo(dummy, fifo_len);
+
+	// Response flag bit0 indicates an error in ISO15693 responses.
+	if (dummy[0] & 0x01) {
+		return 0x00;
 	}
 
-  uint8_t dummy[10];
-  read_fifo(dummy, fifo_len);
-
-  for (int i = 0; i < len; i++) {   
-    uid[i] = dummy[len + 1 - i] ;
-  }
+	for (uint8_t i = 0; i < MFRC630_ISO15693_UID_LENGTH; i++) {
+		uid[i] = dummy[2 + (MFRC630_ISO15693_UID_LENGTH - 1 - i)];
+	}
  	
-	return len;								//return state - valid
+	return MFRC630_ISO15693_UID_LENGTH;		//return state - valid
 }
 
 // write recommended registers
@@ -1388,5 +1492,3 @@ void CLRC663::set_CwMax(bool enable) {
     
     write_reg(MFRC630_REG_DRVCON, current);
 }
-
-

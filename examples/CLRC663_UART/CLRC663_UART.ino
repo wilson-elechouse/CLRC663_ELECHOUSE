@@ -6,6 +6,20 @@
   - Wiring (ESP32): TX -> RC663 RX, RX -> RC663 TX, GND, 3V3. IRQ is optional.
 */
 
+/* Hardware connection UART
+  ELECHOUSE CLRC663 MODULE  --------  ESP32 DEV MODULE
+  5V                        --------  5V
+  PDOWN                     --------  GND
+  MOSI/RX                   --------  D17
+  SCK/SCL                   --------  NC
+  MISO/TX                   --------  D16
+  NSS/SDA                   --------  D5
+  IRQ                       --------  NC
+  3V3                       --------  3V3
+  GND                       --------  GND
+*/
+
+
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include "CLRC663.h"
@@ -14,6 +28,7 @@
 // ESP32 UART2 pins used in the sanity test example
 #define RC663_RX 16
 #define RC663_TX 17
+#define IF3_PIN 5
 #define IRQ_PIN  -1
 #define RC663_BAUD 115200
 
@@ -22,6 +37,22 @@ CLRC663 reader(&RC663Serial, RC663_RX, RC663_TX, RC663_BAUD, -1, IRQ_PIN);
 
 // one-time diagnostics flag
 bool diag_done = false;
+
+uint32_t calc_uart_baud(uint8_t serialSpeed) {
+  uint8_t br_t0 = (serialSpeed >> 5) & 0x07;
+  uint8_t br_t1 = serialSpeed & 0x1F;
+  if (br_t0 == 0) {
+    return 27120000UL / (br_t1 + 1);
+  }
+  return 27120000UL / (br_t1 + 33) / (1UL << (br_t0 - 1));
+}
+
+void print_hex_byte(uint8_t value) {
+  if (value < 0x10) {
+    Serial.print("0");
+  }
+  Serial.print(value, HEX);
+}
 
 // Hex print for blocks without printf.
 void print_block(uint8_t *block, uint8_t length) {
@@ -37,38 +68,102 @@ void print_block(uint8_t *block, uint8_t length) {
   Serial.println("");
 }
 
+void print_14443a_type_hint(uint16_t atqa, uint8_t sak) {
+  Serial.print("Type hint: ");
+  if (sak & 0x04) {
+    Serial.print("UID not complete (cascade). ");
+  }
+  if (sak & 0x20) {
+    Serial.print("ISO-DEP (Type 4A). ");
+  }
+  if (sak == 0x00) {
+    Serial.print("Ultralight/NTAG or Type A (no ISO-DEP). ");
+  } else if (sak == 0x08) {
+    Serial.print("MIFARE Classic 1K (likely). ");
+  } else if (sak == 0x18) {
+    Serial.print("MIFARE Classic 4K (likely). ");
+  }
+  uint8_t atqa_low = static_cast<uint8_t>(atqa & 0xFF);
+  uint8_t uid_size = (atqa_low >> 6) & 0x03;
+  const char *uid_desc = "unknown";
+  if (uid_size == 0) {
+    uid_desc = "single";
+  } else if (uid_size == 1) {
+    uid_desc = "double";
+  } else if (uid_size == 2) {
+    uid_desc = "triple";
+  }
+  Serial.print("UID size=");
+  Serial.print(uid_desc);
+  Serial.println(".");
+}
+
 void setup() {
   Serial.begin(115200);
   while (!Serial) { delay(10); }
 
   Serial.println("startup CLRC663 UART RFID-reader..");
   reader.begin();
+  delay(100);
+  pinMode(IF3_PIN, OUTPUT);
+  digitalWrite(IF3_PIN, HIGH);
+  delay(2);
+  reader.softReset();
 
-  Serial.print("CLRC663 version: 0x");
-  uint8_t version = reader.getVersion();
+  uint8_t version = 0x00;
+  for (uint8_t attempt = 0; attempt < 5; attempt++) {
+    version = reader.read_reg(MFRC630_REG_VERSION);
+    if (version != 0x00 && version != 0xFF) {
+      break;
+    }
+    delay(20);
+  }
+  Serial.print("SW version (UART reg): 0x");
   if (version < 0x10) { Serial.print("0"); }
-  Serial.println(version, HEX);
+  Serial.print(version, HEX);
+  Serial.print(" (major ");
+  Serial.print((version >> 4) & 0x0F);
+  Serial.print(", minor ");
+  Serial.print(version & 0x0F);
+  Serial.println(")");
+  if (version == 0x00 || version == 0xFF) {
+    Serial.println("Warning: UART read looks invalid.");
+  }
 
   runDiagnosticsOnce();
 }
 
 void loop() {
+  // Card scan code.
   uint8_t uid[10] = {0};
-  bool cardFound = false;
-
+  uint8_t uid_len = 0;
   Serial.println("Scan (UART)...");
   reader.softReset();  // also re-asserts UART baud internally now
   reader.AN1102_recommended_registers(MFRC630_PROTO_ISO14443A_106_MILLER_MANCHESTER);
-  uint8_t uid_len = reader.read_iso14443_uid(uid);
-
-  if (uid_len != 0) {
-    Serial.print("ISO-14443 tag found! UID of ");
-    Serial.print(uid_len);
-    Serial.print(" bytes: ");
-    print_block(uid, uid_len);
-    Serial.print("\n");
-    delay(200);
-    return;
+  delay(5);
+  uint16_t atqa = reader.iso14443a_reqa_debug();
+  if (atqa != 0) {
+    uint8_t sak = 0;
+    uid_len = reader.iso14443a_select_debug(uid, &sak);
+    Serial.print("ATQA=0x");
+    print_hex_byte(static_cast<uint8_t>(atqa >> 8));
+    print_hex_byte(static_cast<uint8_t>(atqa & 0xFF));
+    Serial.print(" SAK=0x");
+    print_hex_byte(sak);
+    Serial.println("");
+    if (uid_len != 0) {
+      Serial.print("ISO-14443 tag found! UID of ");
+      Serial.print(uid_len);
+      Serial.print(" bytes: ");
+      print_block(uid, uid_len);
+      print_14443a_type_hint(atqa, sak);
+      Serial.print("\n");
+      delay(200);
+      return;
+    }
+    Serial.println("ISO-14443 select failed.");
+  } else {
+    Serial.println("ISO-14443 REQA no response.");
   }
 
   reader.softReset();
@@ -97,7 +192,7 @@ void runDiagnosticsOnce() {
 
   // Check SERIALSPEED register and computed baud.
   uint8_t serialSpeed = reader.read_reg(MFRC630_REG_SERIALSPEED);
-  uint32_t calcBaud = (27120000UL / (2 * (serialSpeed + 1)));
+  uint32_t calcBaud = calc_uart_baud(serialSpeed);
   Serial.print("SERIALSPEED reg: 0x");
   if (serialSpeed < 0x10) Serial.print("0");
   Serial.print(serialSpeed, HEX);
