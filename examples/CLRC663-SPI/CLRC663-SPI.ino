@@ -21,7 +21,7 @@
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 */
-/* Hardware connection
+/* Hardware connection SPI
   ELECHOUSE CLRC663 MODULE  --------  ESP32 DEV MODULE
   5V                        --------  5V
   PDOWN                     --------  GND
