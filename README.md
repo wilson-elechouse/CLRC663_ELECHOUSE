@@ -1,86 +1,140 @@
-# CLRC663 - RFID-reader library
+# CLRC663 (ELECHOUSE) — ESP32 Arduino Library + Module Guide
 
-An Arduino/PlatformIO library for the CLRC633 RFID-reader module.
+This repository provides an **open-source ESP32 Arduino library** and examples for the **ELECHOUSE CLRC663 Reader Module V1** (on-board PCB antenna).
 
-Tested with Arduino IDE 2.x and PlatformIO.
+- Product page: https://www.elechouse.com/product/clrc663-reader-module/
+- Library repository: https://github.com/wilson-elechouse/CLRC663_ELECHOUSE
 
-Copyright (c) 2023 tueddy (Dirk Carstensen) 
+---
 
+## 1. Module Overview (CLRC663 Reader Module V1)
 
+**CLRC663 Reader Module V1** is a high-performance 13.56 MHz HF/NFC reader module designed for:
+- Access control / attendance terminals
+- Industrial identification / readers
+- IoT device integration
+- Developer learning & prototyping
 
-## Features:
-   - can be connected via SPI, I2C, or UART (2 GPIOs less for I2C/UART)
-   - UART host interface support (for modules strapped for UART)
-   - read ISO-14443 UID's
-   - read ISO-18693 UID's
-   - support for ICode-SLIX password protected tags (privacy mode) / custom tags
-   - LPCD - low power card detection
-   - Auto calibration for LPCD-mode. Avoid false wakeups like in PN5180-library: https://github.com/tueddy/PN5180-Library
-  
+### Key Features
+- **Tri-interface in one module:** **SPI / I²C / UART** (selected via on-board DIP switch, guided by PCB silkscreen)
+- **Open-source ESP32 Arduino library:** ready-to-run examples for fast bring-up
+- **Long read range (verified):** up to **9 cm** with a standard PVC white card (see test conditions below)
+- **Robust performance / strong anti-interference capability**
+- **Low-power operation:** supports **auto sleep** and **card-present wake-up** (**LPCD**)
+- **SAM-ready expansion:** reserved interface for external SAM connection (SAM implementation depends on your solution)
 
-Some header declarations and functions taken and extended from https://github.com/kenny5660/CLRC663.git
+### Verified Read Range (Defined Conditions)
+**Max measured:** up to **9 cm** (PVC white card), card facing the antenna plane  
+- **Card types:** MIFARE One S70 and ISO15693 (UID reading)
+- **Orientation:** aligned, facing antenna (front side)
+- **Power:** TVDD 5V, VDD 3.3V
+- **Environment:** no ferrite, no metal nearby, no known interference sources
+- **Distance definition:** card-to-antenna-plane distance
 
-You can get this reader module on AliExpress or eBay:
+**Recommended stable operating range:**
+- **W/o ferrite shee:** approx. **2.5–8.7 cm** stable
+- **W/ ferrite sheet on backside:** approx. **0–7.5 cm** stable
 
-![Module](https://user-images.githubusercontent.com/11274319/222262881-19112874-c9b8-4305-ae55-17aae3fbe02f.png)
+> Disclaimer: Read range depends heavily on card type, antenna tuning, power configuration, and environment (metal, ferrite, EMI sources, enclosure materials, etc.). Always validate in your final installation environment.
 
-![CLRC663](https://user-images.githubusercontent.com/11274319/222130502-1bac1d0e-7034-4ce1-81d3-b94f3365112e.jpg)
+### Mechanical Summary
+- **Board size (V1):** ~ **40.02 mm × 42.36 mm**
+- **On-board PCB antenna:** 4-turn, ~ **39.07 mm × 41.73 mm**
+- Pin names / silkscreen: printed on PCB (also shown on the product images/manual)
 
-## Wireing
+---
 
-The CLRC663 reader can be connected with SPI or I2C, modules are delivered in SPI mode. Connect these pins:
+## 2. Supported Protocols (Library Status)
 
-- GND/3.3V for power
-- Connect SD (shutdown/Power-down) to GND
-- IRQ_PIN is optional and can be IRQ_PIN=-1. The IRQ-Pin is for wakeup the ESP-32 from deep-sleep.
+### Verified in this repository
+- **ISO14443A** (tested)
+- **ISO15693** (tested)
 
+> Note: The CLRC66303 silicon supports multiple HF/NFC standards. This repo focuses on **practical, tested** ESP32 Arduino examples.
 
-For SPI use MOSI, MISO, SCLK
+---
 
-Create a SPI instance with
-```` c++
-CLRC663 reader(&SPI, CHIP_SELECT, IRQ_PIN);
-````
+## 3. Quick Start (Arduino IDE)
 
-For I2C use SDA and SCL
-Create a I2C instance with
-```` c++
-CLRC663 reader(0x2A, IRQ_PIN);
-````
+1. Download this repo as a ZIP and install it via:  
+   **Arduino IDE → Sketch → Include Library → Add .ZIP Library...**
+2. Open an example:  
+   **File → Examples → CLRC663_ELECHOUSE → ...**
+3. Select board: **ESP32 Dev Module**
+4. Set interface mode (SPI / I²C / UART) on the module (see section 5)
+5. Wire the module according to the selected mode (see section 4)
+6. Upload and run
 
-For UART put the module into UART mode (IFSEL pins / resistors) and connect TX/RX:
-```` c++
-HardwareSerial RC663Serial(2);
-CLRC663 reader(&RC663Serial, RX_PIN, TX_PIN, 115200, RESET_PIN, IRQ_PIN);
-````
+---
 
+## 4. Hardware Connections (ESP32 Dev Module)
 
-Module is delivered in SPI mode by default. If you need to change your CLRC663 module to work with I2C, you can easily do so by using a hot air gun/rework station and changing two resistors R2 -> R1, and R4 -> R8:
-![I2C](https://user-images.githubusercontent.com/11274319/222263210-958d5883-7d8d-4567-b8d4-93587f05dde8.jpg)
+The module uses a single header where signals are **re-used** across SPI / I²C / UART modes.  
+**Make sure your DIP switch mode matches your wiring before powering on.**
 
-I2C address is 0x2A. 
-More default information changing to I2C and change I2C address to 0x28 here: 
-https://blog.edhayes.us/2022/02/23/clrc663-module-spi-i2c/
+### 4.1 SPI Mode Wiring (ESP32 Dev Module)
 
+| ELECHOUSE CLRC663 MODULE | ESP32 DEV MODULE |
+|---|---|
+| 5V | 5V |
+| PDOWN | GND |
+| MOSI/RX | D23 |
+| SCK/SCL | D18 |
+| MISO/TX | D19 |
+| NSS/SDA | D5 |
+| IRQ | D16 |
+| 3V3 | 3V3 |
+| GND | GND |
 
+### 4.2 I²C Mode Wiring (ESP32 Dev Module)
 
-## Examples
+| ELECHOUSE CLRC663 MODULE | ESP32 DEV MODULE |
+|---|---|
+| 5V | 5V |
+| PDOWN | GND |
+| MOSI/RX | NC *(or GND for IF0=0 address bit)* |
+| SCK/SCL | D22 |
+| MISO/TX | NC *(or GND for IF1=0 address bit)* |
+| NSS/SDA | D21 |
+| IRQ | D16 |
+| 3V3 | 3V3 |
+| GND | GND |
 
-- `examples/CLRC663-SPI/CLRC663-SPI.ino` shows SPI wiring and basic tag reading.
-- `examples/CLRC663_I2C/CLRC663_I2C.ino` shows I2C wiring and tag reading.
-- `examples/CLRC663_UART/CLRC663_UART.ino` shows UART wiring and tag reading (set module to UART mode).
-- `examples/UART-testing/UART-testing.ino` is a minimal serial communication smoke test.
+**I²C address bits (IF0/IF1) note:**  
+- In I²C mode, **MOSI/RX = IF0** and **MISO/TX = IF1** can be left **NC** (default = 1), or pulled to **GND** (bit = 0) to change I²C address.  
+- Changing IF0/IF1 wiring may affect other interface modes. Only modify IF0/IF1 if you will **permanently use I²C mode**.
 
-## Installation
+### 4.3 UART Mode Wiring (ESP32 Dev Module)
 
-For Arduino IDE 2.x download the library as zip and use **Sketch → Include Library → Add .ZIP Library…**. Or clone this project into your Arduino `libraries` folder, e.g.:
-```
-cd ~/Documents/Arduino/libraries
-git clone https://github.com/wilson-elechouse/CLRC663_ELECHOUSE.git
-```
+| ELECHOUSE CLRC663 MODULE | ESP32 DEV MODULE |
+|---|---|
+| 5V | 5V |
+| PDOWN | GND |
+| MOSI/RX | D17 |
+| SCK/SCL | NC |
+| MISO/TX | D16 |
+| NSS/SDA | D5 |
+| IRQ | NC |
+| 3V3 | 3V3 |
+| GND | GND |
 
-For PlatformIO include the library in `platformio.ini`:
-```
-lib_deps =
-  https://github.com/wilson-elechouse/CLRC663_ELECHOUSE.git
-```
+> Notes:
+> - UART RX/TX pins and baud rate are defined inside the UART examples. Adjust the `#define` values in the sketch if you use different GPIOs.
+> - Some UART examples use an extra GPIO (e.g., `NSS/SDA`) as a control line; follow the exact sketch you are running.
+
+---
+
+## 5. Interface Mode Switching (DIP Switch)
+
+This module supports **SPI / I²C / UART** selection using an on-board **2-position DIP switch**.
+
+**How to switch (high-level):**
+1. **Power off** your system.
+2. Set the DIP switch by following the **silkscreen guidance on the PCB** (visual alignment to the printed mode label).
+3. Wire the module according to the selected interface (section 4).
+4. Power on and run the corresponding example.
+
+> Detailed DIP-switch mapping (including exact ON/OFF combinations) is provided in the **Module Operation Manual**.  
+> This README keeps the switching section concise by design.
+
+---
