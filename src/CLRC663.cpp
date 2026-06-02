@@ -146,9 +146,13 @@ void CLRC663::begin() {
   if (_transport == MFRC630_TRANSPORT_SPI) {
     _spi->begin();
   } else if (_transport == MFRC630_TRANSPORT_I2C) {
+	#ifdef ARDUINO_ARCH_ESP32
     byte pinSDA = SDA;
     byte pinSCL = SCL;
     _wire->begin(pinSDA, pinSCL);
+	#else
+	_wire->begin();
+	#endif
   } else if (_transport == MFRC630_TRANSPORT_UART) {
     if (_serial) {
 #if defined(ARDUINO_ARCH_ESP32)
